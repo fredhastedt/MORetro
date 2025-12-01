@@ -87,6 +87,7 @@ class MOGraph:
         self.open_nodes: set[MolNode] = set()
         self.weight_samples = weight_samples
         self.no_weights = no_weights
+        self.weight_initial = weight_initial
         self.weights_open: np.ndarray = np.zeros(
             (self.weight_samples, len(self.heuristic_fns))
         )
@@ -331,7 +332,10 @@ class MOGraph:
                     updated_nodes.add((node, weight_indices))
                     for parent in list(self.graph.predecessors(node)):
                         parent = cast(RxnNode | MolNode, parent)
-                        if parent not in queue and parent not in rxn_nodes:
+                        if (
+                            parent not in [q[2] for q in queue]
+                            and parent not in rxn_nodes
+                        ):
                             queue.append(
                                 (-parent.depth, id(parent), parent, child_new_success)
                             )
@@ -453,6 +457,11 @@ class MOGraph:
         Spawn new weights and reinitialize all node values.
         """
         logger.info("Reinitializing values in search graph")
+        if self.weight_initial == "constant":
+            logger.warning(
+                "Weight initialization is set to 'constant'. Reinitialization will not change weights."
+            )
+            return
         self.update_weights()
         open_nodes = [
             node for node in self.mol_to_node.values() if node.is_open or node.is_known
@@ -509,6 +518,8 @@ class MOGraph:
             return self.rng.dirichlet(np.ones(n_obj), size=self.weight_samples)
         elif init_type == "grid":
             return self._grid_initialization()
+        elif init_type == "constant":
+            return self._constant_initialization()
         else:
             raise ValueError(f"Unknown weight initialization type: {init_type}")
 
@@ -598,3 +609,18 @@ class MOGraph:
             )
         logger.info(f"Generated {len(grid_weights)} grid-based weight vectors.")
         return grid_weights
+
+    def _constant_initialization(self) -> np.ndarray:
+        """
+        Generate constant weight vectors (equal weights for all objectives).
+
+        Returns
+        -------
+        np.ndarray
+            Constant weight vectors.
+        """
+        constant_weights = [0.2, 0.2, 0.2, 0.4]
+        weights = np.array([constant_weights for _ in range(self.weight_samples)])
+        logger.info(f"Generated {len(weights)} constant weight vectors.")
+        print(f"Constant weights: {weights[0]}")
+        return weights
