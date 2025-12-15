@@ -630,8 +630,8 @@ class RxnNode:
         PathCost
             Complete filtered solution dictionary. Empty if nothing changed.
         """
-        # Collect all candidate solutions (including current ones)
-        all_candidate_solutions = self.success_cost.copy()
+        # Start with empty candidate solutions
+        all_candidate_solutions = {}
 
         children_costs = [list(child.success_cost.keys()) for child in children]
         for cost_combination in product(*children_costs):
