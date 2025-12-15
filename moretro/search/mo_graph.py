@@ -292,8 +292,16 @@ class MOGraph:
                 weight_groups[weight_indices] = []
             weight_groups[weight_indices].append(node)
 
-        # sort dict so smallest weight_indices are processed first
-        weight_groups = dict(sorted(weight_groups.items(), key=lambda item: item[0]))
+        # sort dict so the group with the lowest rxn node depth goes first
+        def group_sort_key(item):
+            nodes = item[1]
+            rxn_depths = [n.depth for n in nodes if isinstance(n, RxnNode)]
+            if rxn_depths:
+                return min(rxn_depths)
+            return min((n.depth for n in nodes), default=float("inf"))
+
+        weight_groups = dict(sorted(weight_groups.items(), key=group_sort_key))
+        processed_weight_indices = set()
         for weight_indices, nodes in weight_groups.items():
             old_solutions = set(self.target_node.success_cost.keys())
 
@@ -302,10 +310,11 @@ class MOGraph:
             copy_weight_groups.pop(weight_indices)
             # Get all reaction nodes from other weight groups
             rxn_nodes: set[RxnNode] = set()
-            for other_nodes in copy_weight_groups.values():
-                rxn_nodes.update(
-                    node for node in other_nodes if isinstance(node, RxnNode)
-                )
+            for other_indices, other_nodes in copy_weight_groups.items():
+                if other_indices not in processed_weight_indices:
+                    rxn_nodes.update(
+                        node for node in other_nodes if isinstance(node, RxnNode)
+                    )
             # Sort nodes by depth (deepest first) and then by SMILES length within each depth level
             queue = [(-node.depth, id(node), node, False) for node in nodes]
             # sort the queue by depth and smiles length
@@ -347,6 +356,8 @@ class MOGraph:
             new_costs = current_solution.difference(old_solutions)
             if new_costs:
                 new_solutions.update({cost: weight_indices for cost in new_costs})
+
+            processed_weight_indices.add(weight_indices)
 
         # Filter new_solutions to keep only costs still present after all weight groups have been processed
         new_solutions = {
@@ -565,15 +576,15 @@ class MOGraph:
             )
             raise ValueError("Please re-adjust the number of samples")
 
-        sobol = qmc.Sobol(d=n_obj, scramble=False, rng=self.rng)
+        sobol = qmc.Sobol(d=n_obj, scramble=True, rng=self.rng)
         m = int(np.log2(sobol_samples_needed))
         raw_samples = sobol.random_base2(m=m)
+        exp_samples = -np.log(1.0 - raw_samples)
 
-        # Add small epsilon to avoid extreme weights (important for optimization)
-        epsilon = 0.01
-        raw_adjusted = raw_samples + epsilon
+        # Avoid zero sum (extremely unlikely with scrambled Sobol, but safe to handle)
+        exp_samples[exp_samples < 1e-9] = 1e-9
 
-        sobol_weights = raw_adjusted / raw_adjusted.sum(axis=1, keepdims=True)
+        sobol_weights = exp_samples / exp_samples.sum(axis=1, keepdims=True)
 
         # Create final weights array
         if include_extreme:
