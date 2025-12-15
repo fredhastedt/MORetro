@@ -13,6 +13,12 @@ pareto_objectives = 3  # Number of objectives to consider for Pareto filtering
 max_dominated_solutions = 10  # Max number of dominated solutions to keep per node
 max_pareto_solutions = 150  # Max number of Pareto solutions to reach during search
 
+# Weight Parameters
+no_concurrent_weights = 5
+iter_per_weight = 12
+no_samples = 128
+weight_sampling_strategy = "grid"
+
 # Preparation methods
 prepare_starting_mols.file_path = %building_blocks
 prepare_heuristic_fns.heuristics = %objective_functions
@@ -20,23 +26,31 @@ prepare_heuristic_fns.heuristics = %objective_functions
 # Bound for known models
 MOGraph.zero_bound = True
 # Weight Selection Parameters
-MOGraph.weight_samples = 67
-MOGraph.no_weights = 5
-MOGraph.weight_initial = "grid"
-MOGraph.include_extreme = True
+MOGraph.weight_samples = %no_samples
+MOGraph.no_weights = %no_concurrent_weights
+MOGraph.weight_initial = %weight_sampling_strategy
+MOGraph.include_extreme = False
 MOGraph.pareto_objectives = %pareto_objectives
 MOGraph.max_dominated_solutions = %max_dominated_solutions
- 
+MOGraph.weight_update_strategy = "bo"  # "bo" or "queue"
+
 # Search Parameters
 MOSearch.top_n = 25
-MOSearch.max_depth = 12
+MOSearch.max_depth = 15
 MOSearch.iteration_budget = 300
-MOSearch.weight_iter_budget = 20
-MOSearch.time_budget = 600 # seconds
-MOSearch.weight_strategy = "it"
+MOSearch.weight_iter_budget = %iter_per_weight
+MOSearch.time_budget = 0 # seconds -> 0 no limit
+MOSearch.single_step_call_budget = 350
 MOSearch.max_pareto_solutions = %max_pareto_solutions
 MOSearch.stop_on_full_pareto = False
 MOSearch.exclude_dominated_nodes = True
+
+# BO selector defaults (tunable)
+BOWeightSelector.kappa = 2.0
+BOWeightSelector.n_warmup = 15
+BOWeightSelector.decay_factor = 0.5
+BOWeightSelector.max_age = 2
+BOWeightSelector.ucb_threshold = 0.1
 
 # Retro model
 retro_prediction.OneStepModel.model_type = "st"
