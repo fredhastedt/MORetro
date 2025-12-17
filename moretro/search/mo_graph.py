@@ -44,26 +44,18 @@ class MOGraph:
         Number of Pareto objectives.
     max_dominated_solutions : int
         Maximum number of dominated solutions to keep.
-    open_nodes : set[MolNode]
-        Set of nodes available for expansion.
-    weights : np.ndarray
-        Currently active weight vectors.
-    weights_open : np.ndarray
-        Pool of remaining weight vectors.
-    weight_history : list[list[float]]
-        History of previously used weight vectors.
-    solution_cost : SolutionCost
-        Dictionary mapping cost vectors to synthesis paths and weight indices.
-    pareto_front : ParetoCost
-        Current Pareto-optimal solutions.
-    mol_to_node : dict[str, MolNode]
-        Mapping from molecule SMILES to their corresponding nodes.
-    target_node : MolNode
-        The root node representing the target molecule.
-    graph : AndOrGraph
-        The underlying AND/OR graph structure.
-    rng : np.random.Generator
-        Random number generator for reproducible weight sampling.
+    zero_bound : bool
+        Whether to use zero-bound heuristics.
+    weight_samples: int
+        Total number of weight vectors to sample (used for "sobol" or "dirichlet").
+    no_weights: int
+        Number of active weights at a time.
+    weight_initial: str
+        Weight initialization strategy ("sobol", "grid", "constant").
+    include_extreme: bool
+        Whether to include extreme points in weight initialization.
+    weight_update_strategy: str
+        Strategy for updating weights ("queue" or "bo").
     """
 
     def __init__(
@@ -90,6 +82,7 @@ class MOGraph:
         self.weight_samples = weight_samples
         self.no_weights = no_weights
         self.weight_initial = weight_initial
+        self.include_extreme = include_extreme
         self.weight_update_strategy = weight_update_strategy
         self.weights_open: np.ndarray = np.zeros(
             (self.weight_samples, len(self.heuristic_fns))
@@ -102,12 +95,16 @@ class MOGraph:
         self.running_cost_threshold = np.zeros(pareto_objectives)
         self.running_cost_history: list[np.ndarray] = []
 
+        # Assignment check:
+        if self.pareto_objectives > len(self.heuristic_fns):
+            logger.error(
+                f"pareto_objectives ({self.pareto_objectives}) cannot be greater than the number of heuristic functions ({len(self.heuristic_fns)})."
+            )
+            raise ValueError("Invalid pareto_objectives configuration.")
         # BO bookkeeping
         self.bo_selector: BOWeightSelector | None = None
         if self.weight_update_strategy == "bo":
-            self.bo_selector = BOWeightSelector(
-                n_obj=len(heuristic_fns),
-            )
+            self.bo_selector = BOWeightSelector(len(heuristic_fns), seed=42)
 
         # Create a dedicated random number generator for reproducibility
         self.rng = np.random.default_rng(seed=42)
