@@ -104,7 +104,7 @@ class MOGraph:
         # BO bookkeeping
         self.bo_selector: BOWeightSelector | None = None
         if self.weight_update_strategy == "bo":
-            self.bo_selector = BOWeightSelector(len(heuristic_fns), seed=42)
+            self.bo_selector = BOWeightSelector(self.pareto_objectives, seed=42)
 
         # Create a dedicated random number generator for reproducibility
         self.rng = np.random.default_rng(seed=42)
@@ -131,26 +131,11 @@ class MOGraph:
             # add open target node no_weights time to set in list
             self.open_nodes.add(self.target_node)
             self.mol_to_node[self.target] = self.target_node
-            self.target_node.total_value = np.zeros(self.no_weights)
+            self.target_node.total_value = np.zeros((self.no_weights, 2))
 
         # initialize weights depending on strategy
-        if self.bo_selector:
-            initial_weights_open = self.weight_initialization(
-                n_obj=len(heuristic_fns), init_type="grid", include_extreme=False
-            )
-            sobol_weights_open = self.weight_initialization(
-                n_obj=len(heuristic_fns),
-                init_type="sobol",
-                include_extreme=False,
-            )
-            self.weights_open = np.vstack([initial_weights_open, sobol_weights_open])
-        else:
-            self.weights_open = self.weight_initialization(
-                n_obj=len(heuristic_fns),
-                init_type=weight_initial,
-                include_extreme=include_extreme,
-            )
-            self.rng.shuffle(self.weights_open)
+        self.initialize_weight_pool()
+
         # pop no_weights from weights_open into self.weights
         self.weights = self.weights_open[
             : self.no_weights, :
@@ -697,15 +682,15 @@ class MOGraph:
         np.ndarray
             Grid-based weight vectors.
         """
-        if len(self.heuristic_fns) <= 3:
+        if self.pareto_objectives <= 3:
             # Generate grid points with a step size of 0.25 (0, 0.25, 0.5, 0.75, 1) that sum to 1
             steps = [0.0, 0.25, 0.5, 0.75, 1.0]
         else:
             # Coarser steps for higher dim
             steps = [0.0, 1 / 3, 2 / 3, 1.0]
         grid_points = np.array(
-            np.meshgrid(*[steps] * len(self.heuristic_fns))
-        ).T.reshape(-1, len(self.heuristic_fns))
+            np.meshgrid(*[steps] * self.pareto_objectives)
+        ).T.reshape(-1, self.pareto_objectives)
         # Filter points that sum to 1
         grid_weights = grid_points[np.isclose(grid_points.sum(axis=1), 1.0)]
         # spawn dummy weights s.t. len(weights) % no_weights == 0
@@ -736,3 +721,89 @@ class MOGraph:
         logger.info(f"Generated {len(weights)} constant weight vectors.")
         print(f"Constant weights: {weights[0]}")
         return weights
+
+    def initialize_weight_pool(self) -> None:
+        """
+        Initialize the pool of open weights based on the configured strategy.
+        """
+        if self.bo_selector:
+            initial_weights_open = self.weight_initialization(
+                n_obj=self.pareto_objectives, init_type="grid", include_extreme=False
+            )
+            sobol_weights_open = self.weight_initialization(
+                n_obj=self.pareto_objectives,
+                init_type="sobol",
+                include_extreme=False,
+            )
+            self.weights_open = np.vstack([initial_weights_open, sobol_weights_open])
+        else:
+            self.weights_open = self.weight_initialization(
+                n_obj=self.pareto_objectives,
+                init_type=self.weight_initial,
+                include_extreme=self.include_extreme,
+            )
+            self.rng.shuffle(self.weights_open)
+
+    def check_stagnation_and_update_rate(
+        self,
+        current_rate: float,
+    ) -> float:
+        """
+        Checks for BO stagnation and updates convergence rate if needed.
+        If stagnation is detected, resets the BO search.
+
+        Parameters
+        ----------
+        current_rate : float
+            Current convergence rate.
+
+        Returns
+        -------
+        float
+            New convergence rate (updated if stagnation detected, else same).
+        """
+        if not self.bo_selector:
+            return current_rate
+
+        if current_rate == 0.0:
+            return 0.0
+
+        # Only check for stagnation if warmup is complete and we have found at least one solution
+        if (
+            len(self.bo_selector.weights_history) < self.bo_selector.n_warmup
+            or len(self.pareto_front) == 0
+        ):
+            return current_rate
+
+        last_utility = self.bo_selector.get_two_last_batches_utilities()
+        max_ucb = self.bo_selector.get_max_ucb(self.weights_open)
+
+        logger.info(
+            f"BO Status: Last Utility={last_utility:.4f}, Max UCB={max_ucb:.4f}"
+        )
+
+        if last_utility == 0.0 and max_ucb < self.bo_selector.ucb_threshold:
+            new_rate = 0.15
+            logger.info(
+                f"BO Stagnation detected (Utility=0, Max UCB < {self.bo_selector.ucb_threshold}). "
+                f"Setting convergence rate to 0.0 and resetting BO with grid weights."
+            )
+            self.switch_to_grid_search()
+            self.reinitialize_graph()
+            return new_rate
+
+        return current_rate
+
+    def switch_to_grid_search(self) -> None:
+        """
+        Switch to grid-based search for the final phase.
+        Disables BO selector.
+        """
+        logger.info("Switching to grid search (final phase).")
+
+        self.weights_open = self.weight_initialization(
+            n_obj=self.pareto_objectives, init_type="grid", include_extreme=False
+        )
+        logger.info("Reset weight pool with grid weights only.")
+        # Disable BO selector as we just want to iterate through grid weights
+        self.bo_selector = None

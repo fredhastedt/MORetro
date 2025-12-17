@@ -210,11 +210,18 @@ class MolNode:
         -------
         np.ndarray
             Array of scalar reaction numbers, one for each weight group.
+            Shape: (n_weights, 2) where col 0 is Pareto scalar, col 1 is convergence.
         """
-        rxn_no = []
-        for weight in weights:
-            rxn_no.append(np.dot(np.array(self.value_estimates), weight))
-        return np.array(rxn_no)
+        # Pareto part (weighted sum)
+        pareto_vals = self.value_estimates[: self.pareto_objectives]
+        # weights now only contains pareto weights
+        scalar_pareto = weights @ pareto_vals
+
+        # Convergence part (last objective, unweighted)
+        convergence_val = self.value_estimates[self.pareto_objectives]
+        scalar_convergence = np.full(weights.shape[0], convergence_val)
+
+        return np.stack([scalar_pareto, scalar_convergence], axis=1)
 
     def uppropagate(
         self,
@@ -247,7 +254,7 @@ class MolNode:
         if self.is_known:  # known building block
             no_weights, _ = weights.shape
             if self.zero_bound:
-                new_rxn_no = np.zeros(no_weights)
+                new_rxn_no = np.zeros((no_weights, 2))
             else:
                 new_rxn_no = self.objectives_to_scalar(weights)
             success = True
@@ -261,8 +268,8 @@ class MolNode:
         elif len(children) > 0:  # interior node with children
             children_rxn_no = np.array(
                 [child.rxn_no for child in children]
-            )  # shape: (n_children, n_weights)
-            new_rxn_no = np.min(children_rxn_no, axis=0)  # shape: (n_weights,)
+            )  # shape: (n_children, n_weights, 2)
+            new_rxn_no = np.min(children_rxn_no, axis=0)  # shape: (n_weights, 2)
             best_rxn_no = np.array(
                 [child.best_rxn_no for child in children]
             )  # shape: (n_children, n_objectives)
@@ -271,7 +278,7 @@ class MolNode:
             if success:
                 new_success_cost = self.track_success_cost(children)
         else:  # no valid expansion
-            new_rxn_no = np.full(weights.shape[0], np.inf)
+            new_rxn_no = np.full((weights.shape[0], 2), np.inf)
             best_rxn_no = np.full(self.pareto_objectives, np.inf)
 
         if (
@@ -519,9 +526,9 @@ class RxnNode:
         self.cost = np.array(
             [c + self._delta_offset for c in self.cost]
         )  # ensure unique costs
-        self.rxn_no = zero_vector(self.weight_length)
+        self.rxn_no = np.zeros((self.weight_length, 2))
         self.best_rxn_no = zero_vector(self.pareto_objectives)
-        self.total_value = zero_vector(self.weight_length)
+        self.total_value = np.zeros((self.weight_length, 2))
 
     def uppropagate(
         self, children: list[MolNode], weights: np.ndarray, child_new_success: bool
@@ -562,7 +569,10 @@ class RxnNode:
             new_rxn_no += np.array(child.rxn_no)
             new_best_rxn_no += np.array(child.best_rxn_no)
         # add reaction cost with each weight combination
-        rxn_cost = weights @ self.true_cost
+        pareto_cost = weights @ self.true_cost[: self.pareto_objectives]
+        conv_cost = self.true_cost[self.pareto_objectives]
+        rxn_cost = np.stack([pareto_cost, np.full(len(weights), conv_cost)], axis=1)
+
         new_rxn_no += rxn_cost
         best_cost = np.array(self.true_cost)[: self.pareto_objectives]
         new_best_rxn_no += np.array(best_cost)
@@ -604,7 +614,7 @@ class RxnNode:
         """
         # check if parent molecule is infeasible
         if np.all(parent.rxn_no == float("inf")):
-            new_total_value = np.full(len(self.rxn_no), np.inf)
+            new_total_value = np.full((len(self.rxn_no), 2), np.inf)
             new_best_total_value = np.full(self.pareto_objectives, np.inf)
         else:
             new_total_value = self.rxn_no - parent.rxn_no + parent.total_value

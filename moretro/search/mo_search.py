@@ -246,6 +246,15 @@ class MOSearch:
             1 to reset weight iteration counter, 0 for no action, -100 to exit search.
         """
         if num_iter == self.weight_iter_budget + 1 or early_resampling:
+            # Check for convergence/stagnation in BO
+            if self.search_graph.bo_selector:
+                new_rate = self.search_graph.check_stagnation_and_update_rate(
+                    self.convergence_rate,
+                )
+                if new_rate != self.convergence_rate:
+                    self.convergence_rate = new_rate
+                    return 1
+
             logger.info("Sampling new weights...")
             if self.search_graph.weights_open.shape[0] < self.search_graph.no_weights:
                 return -100  # exit search
@@ -278,14 +287,21 @@ class MOSearch:
             return set(), True
 
         open_nodes_values = []
+        open_pareto_values = []
         for node in open_nodes:
-            open_nodes_values.append(node.total_value)
+            pareto_values = node.total_value[:, 0]  # exclude convergence cost
+            convergence_values = node.total_value[:, 1]
+            combined_values = pareto_values + self.convergence_rate * convergence_values
+            open_nodes_values.append(combined_values)
+            open_pareto_values.append(pareto_values)
 
         open_values = np.array(open_nodes_values)  # dims are n_nodes x n_weights
-        min_values = np.min(open_values, axis=0)
-        is_min = open_values == min_values[None, :]
+        open_pareto = np.array(open_pareto_values)  # dims are n_nodes x n_weights
+        min_indices = np.argmin(open_values, axis=0)
+        min_values = open_pareto[min_indices, np.arange(open_pareto.shape[1])]
+        is_min = open_pareto == min_values[None, :]
         indices_per_dim = []
-        for i in range(open_values.shape[1]):
+        for i in range(open_pareto.shape[1]):
             dim_indices = np.where(is_min[:, i])[0].tolist()
             indices_per_dim.append(dim_indices)
 
