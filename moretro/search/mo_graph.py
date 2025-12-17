@@ -99,6 +99,8 @@ class MOGraph:
         self.pareto_front: ParetoCost = {}
         self.pareto_front_costs: np.ndarray = np.empty((0, pareto_objectives))
         self.mol_to_node: dict[str, MolNode] = {}
+        self.running_cost_threshold = np.zeros(pareto_objectives)
+        self.running_cost_history: list[np.ndarray] = []
 
         # BO bookkeeping
         self.bo_selector: BOWeightSelector | None = None
@@ -208,6 +210,7 @@ class MOGraph:
                 costs = np.array(
                     pred["costs"]
                 )  # * Costs should be calculated outside this class using ML surrogates
+                self.running_cost_history.append(costs[: self.pareto_objectives])
                 rxn_node = RxnNode(
                     smiles=rxn_smiles,
                     template=template,  # In SMARTS
@@ -260,6 +263,14 @@ class MOGraph:
                     self.graph.add_edge(rxn_node, reactant_node)
 
                 new_nodes.append((rxn_node, weight_indices))
+
+        running_cost_mean = np.mean(self.running_cost_history, axis=0)
+        running_cost_std = np.std(self.running_cost_history, axis=0)
+        # get threshold where cost is within bottom 2.5% confidence interval
+        self.running_cost_threshold = np.maximum(
+            running_cost_mean - 1.96 * running_cost_std,
+            np.zeros_like(running_cost_mean),
+        )
         return set(new_nodes)
 
     def update_values(self, nodes: MolsAndWeights) -> bool:
@@ -358,7 +369,10 @@ class MOGraph:
                 elif isinstance(node, MolNode):
                     children = cast(list[RxnNode], list(self.graph.successors(node)))
                     parents_update, child_new_success = node.uppropagate(
-                        children, self.weights, child_new_success
+                        children,
+                        self.weights,
+                        child_new_success,
+                        self.running_cost_threshold,
                     )
                 else:
                     raise TypeError(
