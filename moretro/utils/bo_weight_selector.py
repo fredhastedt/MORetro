@@ -207,7 +207,7 @@ class BOWeightSelector:
                 std = posterior.variance.sqrt().squeeze().cpu().numpy()
                 ucb_scores = mean + self.kappa * std
 
-            self._plot_selection(weights_open, ucb_scores, selected)
+            self._plot_selection(valid_candidates, ucb_scores, selected)
 
             return selected, remaining
 
