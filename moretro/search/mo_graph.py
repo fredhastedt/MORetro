@@ -285,13 +285,9 @@ class MOGraph:
             True if Pareto front was updated.
         """
         nodes_to_update = nodes.copy()
-        start = time.time()
         updated_nodes, new_solutions = self.uppropagation(nodes_to_update)
-        logger.info(f"Uppropagation took {time.time() - start:.2f} seconds")
         nodes_to_update.update(updated_nodes)
-        start = time.time()
         downprop_updated, _ = self.downpropagation(nodes_to_update)
-        logger.info(f"Downpropagation took {time.time() - start:.2f} seconds")
         pareto_updated = self.update_solution_and_pareto(new_solutions)
 
         return pareto_updated
