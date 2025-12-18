@@ -317,7 +317,6 @@ class MOSearch:
                     break
                 i += 1
         self.retro_expansion_count += len(nodes_and_weights_to_expand)
-        logger.info(f"Single-step model calls so far: {self.retro_expansion_count}")
         return nodes_and_weights_to_expand, False
 
     def run_mo_search(self) -> None:
