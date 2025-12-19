@@ -2,6 +2,7 @@ import json
 from logging import Logger
 from pathlib import Path
 from typing import Any
+from rdkit import Chem
 
 import gin
 import torch
@@ -22,7 +23,8 @@ class OneStepModel:
     A one-step model class for retro prediction.
     This class incorporates different one step models
     """
-    # TODO specify device for the models 
+
+    # TODO specify device for the models
     def __init__(
         self,
         model_type: str,
@@ -71,14 +73,16 @@ class OneStepModel:
                 fp_dim=2048,
                 realistic_filter=True,
             )
-            self.templates = {} # PDVN does not need templates passed in prediction
+            self.templates = {}  # PDVN does not need templates passed in prediction
         elif model_type == "g2e":
             self.model = G2E(
                 model_checkpoint=self.checkpoint_path,
                 vocab_checkpoint=self.checkpoint_path.parent / "vocab",
                 device="cuda",
             )
-            self.model.load_state_dict(torch.load(self.checkpoint_path, map_location="cpu"))
+            self.model.load_state_dict(
+                torch.load(self.checkpoint_path, map_location="cpu")
+            )
             self.templates = {}  # G2E does not need templates passed in prediction
         else:
             raise ValueError(f"Unsupported model type: {model_type}")
@@ -118,6 +122,26 @@ class OneStepModel:
             if not rxn_smiles:
                 updated_predictions.append(mol_predictions)
                 continue
+            recording_indices = []
+            for rxn in rxn_smiles:
+                rxn_smiles_parts = rxn.split(">>")
+                lengths = []
+                for n in rxn_smiles_parts:
+                    mol = Chem.MolFromSmiles(n)
+                    lengths.append(len(mol.GetAtoms()) if mol else 0)  # type: ignore
+                if all([l == 1 for l in lengths]):
+                    recording_indices.append(False)
+                else:
+                    recording_indices.append(True)
+            # delete predictions with only single atom molecules
+            rxn_smiles = [
+                rxn for rxn, record in zip(rxn_smiles, recording_indices) if record
+            ]
+            mol_predictions = [
+                pred
+                for pred, record in zip(mol_predictions, recording_indices)
+                if record
+            ]
             conditions = self.condition_model.predict(rxn_smiles)
             expanded_mol_predictions = []
             for pred, topk_cond in zip(mol_predictions, conditions, strict=True):

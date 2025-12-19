@@ -709,11 +709,13 @@ class MOGraph:
         # Filter points that sum to 1
         grid_weights = grid_points[np.isclose(grid_points.sum(axis=1), 1.0)]
         # spawn dummy weights s.t. len(weights) % no_weights == 0
+        random_weights = self.rng.dirichlet(np.ones(len(self.heuristic_fns)), size=20)
         i = 0
         while len(grid_weights) % self.no_weights != 0:
             grid_weights = np.vstack(
-                [grid_weights, grid_weights[i % len(grid_weights)]]
+                [grid_weights, random_weights[i]]
             )
+            i += 1
         logger.info(f"Generated {len(grid_weights)} grid-based weight vectors.")
         return grid_weights
 
