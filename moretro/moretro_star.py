@@ -677,6 +677,7 @@ if __name__ == "__main__":
     # add argument for saving paths
     parser = ArgumentParser()
     parser.add_argument("--output_dir", type=str, default="output", help="Directory to save output files")
+    parser.add_argument("--dataset", type=str, required=True)
     args = parser.parse_args()
     
     # overwrite file save location for logger config
@@ -701,7 +702,7 @@ if __name__ == "__main__":
     gin.parse_config_file("moretro/configs/search_config.gin")
     # TODO: add argparse for input file / singular SMILES string
 
-    mol_file = pd.read_csv("pistachio_reachable_targets.txt", header=None, sep=",")
+    mol_file = pd.read_csv(args.dataset, header=None, sep=",")
     for target_smiles in mol_file[0].tolist():
         search_smiles = target_smiles[2:-1]
         moretro = MORetro(search_smiles)
