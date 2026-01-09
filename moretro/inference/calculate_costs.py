@@ -327,4 +327,5 @@ COST_MAPPING = {
     "toxicity_cost": toxicity_cost,
     "convergence_cost": even_split,
     "retro_star_cost": log_score,
+    "policy_cost": log_score,
 }
