@@ -7,7 +7,8 @@ import gin
 import torch
 
 from moretro.external.quarc.quarc_predictor import QuarcPredictor
-from moretro.external.template_models import TemplRel
+from moretro.external.template_models import TemplRel, PDVN
+from moretro.external.tf_models import Graph2EditsPolicy as G2E
 from moretro.inference.calculate_costs import COST_MAPPING, calculate_costs
 from moretro.utils.typing_hints import Predictions
 
@@ -21,7 +22,7 @@ class OneStepModel:
     A one-step model class for retro prediction.
     This class incorporates different one step models
     """
-
+    # TODO specify device for the models 
     def __init__(
         self,
         model_type: str,
@@ -44,15 +45,16 @@ class OneStepModel:
                 raise ValueError("Please ensure that all cost functions are defined")
 
         if self.template_path:
+            logger.info(f"Using template path: {self.template_path}")
+        else:
+            logger.info("No template path provided, expected for non-template models.")
+
+        if model_type == "st" and self.template_path:
             with open(self.template_path, encoding="utf-8") as f:
                 template_dict = json.load(f)
             self.templates = {}
             for k, v in template_dict.items():
                 self.templates[int(k)] = v
-        else:
-            logger.info("No template path provided, expected for non-template models.")
-
-        if model_type == "st":
             retro_checkpoint = torch.load(
                 self.checkpoint_path, map_location="cpu", weights_only=False
             )
@@ -61,10 +63,28 @@ class OneStepModel:
             state_dict = retro_checkpoint["state_dict"]
             state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
             self.model.load_state_dict(state_dict)
+        elif model_type == "pdvn" and self.template_path:
+            self.model = PDVN(
+                trained_model=self.checkpoint_path,
+                template_path=self.template_path,
+                device=-1,
+                fp_dim=2048,
+                realistic_filter=True,
+            )
+            self.templates = {} # PDVN does not need templates passed in prediction
+        elif model_type == "g2e":
+            self.model = G2E(
+                model_checkpoint=self.checkpoint_path,
+                vocab_checkpoint=self.checkpoint_path.parent / "vocab",
+                device="cuda",
+            )
+            self.model.load_state_dict(torch.load(self.checkpoint_path, map_location="cpu"))
+            self.templates = {}  # G2E does not need templates passed in prediction
         else:
             raise ValueError(f"Unsupported model type: {model_type}")
             # * Add new models here
-        self.model.eval()
+        if isinstance(self.model, torch.nn.Module):
+            self.model.eval()
 
     def predict(self, target: str | list[str], top_n: int = 50) -> Predictions:
         """
