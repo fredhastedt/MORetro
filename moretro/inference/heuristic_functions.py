@@ -19,7 +19,7 @@ RDLogger.DisableLog("rdApp.*")  # type: ignore
 model_path = Path(__file__).parent.parent / "models"
 _price_model = MolPrice(weights_path=model_path / "model_price.pkl")
 _toxicity_model = load(model_path / "model_toxicity.joblib")
-_value_model = load_value_model(model_path / "model_value.pt", device="cpu")
+_value_model = load_value_model(model_path / "pdvn/value_fn.ckpt", device="cpu")
 _fp_generator = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=1024)
 
 
@@ -71,6 +71,12 @@ def value_heuristic(smiles: str) -> float:
     value = float(min(1, value / 10))
     return value
 
+def zero_heuristic(smiles: str) -> float:
+    """
+    A heuristic that always returns zero.
+    """
+    return 0.0
+
 
 COST_MAPPING = {
     "sustainability_cost": sustainability_heuristic,
@@ -78,6 +84,7 @@ COST_MAPPING = {
     "toxicity_cost": toxicity_heuristic,
     "convergence_cost": value_heuristic,
     "retro_star_cost": value_heuristic,
+    "policy_cost": zero_heuristic,
 }
 
 if __name__ == "__main__":
