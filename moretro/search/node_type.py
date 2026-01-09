@@ -93,15 +93,12 @@ def filter_pareto_with_dominated(
         if idx in keep_pareto or idx in keep_dominated:
             result[cost] = path
 
-    self.local_pareto = {
-        tuple(cost): all_solutions[tuple(cost)]
-        for cost in costs[pareto_indices].tolist()
-    }
+    self.local_pareto = {items[idx][0]: items[idx][1] for idx in pareto_indices}
 
     return result
 
 
-@dataclass(frozen=False)
+@dataclass(frozen=False, eq=False)
 class MolNode:
     """
     Class to represent a molecule node in the multi-objective retrosynthesis search graph.
@@ -260,7 +257,7 @@ class MolNode:
             )  # should have shape of objectives
         elif self.is_open:  # tip node of tree which is not a building block
             new_rxn_no = self.objectives_to_scalar(weights)
-            best_rxn_no = bounded_cost  # TODO check if correct
+            best_rxn_no = np.zeros_like(bounded_cost)  # TODO check if correct
         elif len(children) > 0:  # interior node with children
             children_rxn_no = np.array(
                 [child.rxn_no for child in children]
@@ -390,7 +387,10 @@ class MolNode:
         # For each reaction group, add the path with lowest total cost to candidates
         for _, cost_successor_pairs in reaction_groups.items():
             if len(cost_successor_pairs) > 1:
-                min_pair = min(cost_successor_pairs, key=lambda x: sum(x[0]))
+                min_pair = min(
+                    cost_successor_pairs,
+                    key=lambda x: (np.round(sum(x[0]), 3), x[0][0], x[0][1], x[0][2]),
+                )
                 cost, successor = min_pair
             else:
                 cost, successor = cost_successor_pairs[0]
@@ -436,7 +436,7 @@ class MolNode:
         return f"MolNode(smiles='{self.smiles}', depth={self.depth}, success={self.success})"
 
 
-@dataclass(frozen=False)
+@dataclass(frozen=False, eq=False)
 class RxnNode:
     """
     Reaction node in multi-objective retrosynthesis search graph (AND node).
