@@ -200,14 +200,13 @@ class BOWeightSelector:
             remaining = weights_open[~mask_selected]
 
             # --- Visualization ---
-            # Compute UCB just for visualization purposes
+            # Compute acquisition function values for visualization
             with torch.no_grad():
-                posterior = gp.posterior(choices)
-                mean = posterior.mean.squeeze().cpu().numpy()
-                std = posterior.variance.sqrt().squeeze().cpu().numpy()
-                ucb_scores = mean + self.kappa * std
+                acq_values = np.zeros(len(choices))
+                for i, x in enumerate(choices):
+                    acq_values[i] = qGIBBON(x.unsqueeze(0)).item()
 
-            self._plot_selection(weights_open, ucb_scores, selected)
+            self._plot_selection(weights_open, acq_values, selected)
 
             return selected, remaining
 
@@ -221,10 +220,10 @@ class BOWeightSelector:
             raise e
 
     def _plot_selection(
-        self, candidates: np.ndarray, ucb_scores: np.ndarray, selected: np.ndarray
+        self, candidates: np.ndarray, acq_values: np.ndarray, selected: np.ndarray
     ) -> None:
         """
-        Plot the BO selection process: history, candidates (colored by UCB), and selected weights.
+        Plot the BO selection process: history, candidates (colored by acquisition function), and selected weights.
         Saves the plot to logs/bo_select_plot_{N}.png.
         """
         if not PLOTTING_AVAILABLE or self.n_obj != 3 or plt is None or Axes3D is None:
@@ -258,18 +257,16 @@ class BOWeightSelector:
                 )
                 fig.colorbar(sc_hist, ax=ax, shrink=0.6, label="Observed IG")
 
-            # open candidates colored by UCB
-            sc_open = ax.scatter(
+            # open candidates colored by acquisition function value
+            ax.scatter(
                 candidates[:, 0],
                 candidates[:, 1],
                 candidates[:, 2],
                 s=20,
-                c=ucb_scores,
-                cmap="plasma",
-                alpha=0.9,
-                label="candidates (UCB)",
+                c=acq_values,
+                cmap="viridis",
+                alpha=0.7,
             )
-            fig.colorbar(sc_open, ax=ax, shrink=0.6, label="Predicted UCB")
 
             # selected weights overlay
             if len(selected):
@@ -289,9 +286,6 @@ class BOWeightSelector:
             ax.set_xlabel("w1")
             ax.set_ylabel("w2")
             ax.set_zlabel("w3")
-            ax.set_title(
-                f"BO selection: history (IG), candidates (UCB), selected (k={len(selected)})"
-            )
             ax.view_init(elev=30, azim=45)
             out_dir = Path(__file__).parent.parent.parent / "logs" / "weight_selection"
             out_dir.mkdir(exist_ok=True, parents=True)
