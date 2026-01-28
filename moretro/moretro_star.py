@@ -54,7 +54,9 @@ class MORetro:
             # Save all solution costs as pickle
             safe_target_name = self._safe_smiles_dirname(self.target)
             os.makedirs(f"figs/{args.output_dir}/{safe_target_name}", exist_ok=True)
-            pickle_path = f"figs/{args.output_dir}/{safe_target_name}/solution_costs.pkl"
+            pickle_path = (
+                f"figs/{args.output_dir}/{safe_target_name}/solution_costs.pkl"
+            )
             with open(pickle_path, "wb") as f:
                 pickle.dump(self.mo_search.search_graph.solution_cost, f)
             logger.info(f"Saved all solution costs to {pickle_path}")
@@ -669,18 +671,24 @@ class MORetro:
 
 
 if __name__ == "__main__":
-    import pandas as pd
-    from argparse import ArgumentParser
     import configparser
     import io
+    from argparse import ArgumentParser
+
+    import pandas as pd
 
     # add argument for saving paths
     parser = ArgumentParser()
-    parser.add_argument("--output_dir", type=str, default="output", help="Directory to save output files")
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default="output",
+        help="Directory to save output files",
+    )
     parser.add_argument("--dataset", type=str, required=True)
     parser.add_argument("--config_file", type=str, default="search_config.gin")
     args = parser.parse_args()
-    
+
     # overwrite file save location for logger config
     new_log_path = f"moretro/logs/{args.output_dir}.log"
     os.makedirs(os.path.dirname(new_log_path), exist_ok=True)
@@ -688,23 +696,23 @@ if __name__ == "__main__":
     # Configure logging dynamically
     config = configparser.ConfigParser()
     config.read("moretro/configs/logging.conf")
-    
+
     # Update the log file path in the configuration
     # The args are stored as a string representation of a tuple: ('path', 'mode')
-    config.set('handler_fileHandler', 'args', f"('{new_log_path}', 'a')")
-    
+    config.set("handler_fileHandler", "args", f"('{new_log_path}', 'a')")
+
     # Apply configuration
     with io.StringIO() as config_buffer:
         config.write(config_buffer)
         config_buffer.seek(0)
         conf.fileConfig(config_buffer, disable_existing_loggers=False)
 
-
     gin.parse_config_file(f"moretro/configs/{args.config_file}")
     # TODO: add argparse for input file / singular SMILES string
 
     mol_file = pd.read_csv(args.dataset, header=None, sep=",")
     for target_smiles in mol_file[0].tolist():
+        # TODO: clean up SMILES input
         search_smiles = target_smiles[2:-1]
         moretro = MORetro(search_smiles)
         moretro.search()

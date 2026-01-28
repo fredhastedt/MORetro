@@ -389,7 +389,7 @@ class MolNode:
             if len(cost_successor_pairs) > 1:
                 min_pair = min(
                     cost_successor_pairs,
-                    key=lambda x: (np.round(sum(x[0]), 3), x[0][0], x[0][1], x[0][2]),
+                    key=lambda x: (np.round(sum(x[0]), 3), *x[0]),
                 )
                 cost, successor = min_pair
             else:

@@ -1,6 +1,4 @@
-import heapq
 import logging
-import time
 from collections.abc import Callable
 from typing import cast
 
@@ -414,14 +412,13 @@ class MOGraph:
         tuple[set[Nodes], set[Nodes]]
             Tuple of (updated_nodes, processed_nodes).
         """
-        # Use priority queue to maintain depth order (positive depth for min-heap behavior)
-        queue = [(node[0].depth, id(node[0]), node[0]) for node in nodes]
-        heapq.heapify(queue)
+        # Use list to maintain depth order
+        queue = sorted([node[0] for node in nodes], key=lambda x: x.depth)
         updated_nodes = set()
         processed = set()  # Track processed nodes to avoid duplicates
 
         while queue:
-            _, _, node = heapq.heappop(queue)
+            node = queue.pop(0)
             processed.add(node)
 
             if isinstance(node, RxnNode):
@@ -439,7 +436,7 @@ class MOGraph:
                 updated_nodes.add(node)
                 for child in self.graph.successors(node):
                     if child not in queue:
-                        heapq.heappush(queue, (child.depth, id(child), child))
+                        queue.append(child)
 
         return updated_nodes, processed
 
@@ -712,9 +709,7 @@ class MOGraph:
         random_weights = self.rng.dirichlet(np.ones(len(self.heuristic_fns)), size=20)
         i = 0
         while len(grid_weights) % self.no_weights != 0:
-            grid_weights = np.vstack(
-                [grid_weights, random_weights[i]]
-            )
+            grid_weights = np.vstack([grid_weights, random_weights[i]])
             i += 1
         logger.info(f"Generated {len(grid_weights)} grid-based weight vectors.")
         return grid_weights

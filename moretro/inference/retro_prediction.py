@@ -2,14 +2,14 @@ import json
 from logging import Logger
 from pathlib import Path
 from typing import Any
-from rdkit import Chem
 
 import gin
 import torch
+from rdkit import Chem
 
 from moretro.external.quarc.quarc_predictor import QuarcPredictor
-from moretro.external.template_models import TemplRel, PDVN
-from moretro.external.tf_models import Graph2EditsPolicy as G2E
+from moretro.external.template_models import PDVN, TemplRel
+from moretro.external.tf_models import Graph2EditsPolicy
 from moretro.inference.calculate_costs import COST_MAPPING, calculate_costs
 from moretro.utils.typing_hints import Predictions
 
@@ -75,7 +75,7 @@ class OneStepModel:
             )
             self.templates = {}  # PDVN does not need templates passed in prediction
         elif model_type == "g2e":
-            self.model = G2E(
+            self.model = Graph2EditsPolicy(
                 model_checkpoint=self.checkpoint_path,
                 vocab_checkpoint=self.checkpoint_path.parent / "vocab",
                 device="cuda",
@@ -129,22 +129,26 @@ class OneStepModel:
                 for n in rxn_smiles_parts:
                     mol = Chem.MolFromSmiles(n)
                     lengths.append(len(mol.GetAtoms()) if mol else 0)  # type: ignore
-                if all([l == 1 for l in lengths]):
+                if all([length == 1 for length in lengths]):
                     recording_indices.append(False)
                 else:
                     recording_indices.append(True)
             # delete predictions with only single atom molecules
             rxn_smiles = [
-                rxn for rxn, record in zip(rxn_smiles, recording_indices) if record
+                rxn
+                for rxn, record in zip(rxn_smiles, recording_indices, strict=True)
+                if record
             ]
-            mol_predictions = [
+            checked_mol_predictions = [
                 pred
-                for pred, record in zip(mol_predictions, recording_indices)
+                for pred, record in zip(mol_predictions, recording_indices, strict=True)
                 if record
             ]
             conditions = self.condition_model.predict(rxn_smiles)
             expanded_mol_predictions = []
-            for pred, topk_cond in zip(mol_predictions, conditions, strict=True):
+            for pred, topk_cond in zip(
+                checked_mol_predictions, conditions, strict=True
+            ):
                 for cond in topk_cond:
                     # Create a copy of the prediction for each condition
                     pred_copy = pred.copy()

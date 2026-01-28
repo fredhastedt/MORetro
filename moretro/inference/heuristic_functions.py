@@ -72,6 +72,7 @@ def value_heuristic(smiles: str) -> float:
     value = float(min(1, value / 10))
     return value
 
+
 def zero_heuristic(smiles: str) -> float:
     """
     A heuristic that always returns zero.
