@@ -47,8 +47,6 @@ class BOWeightSelector:
         Decay factor for utility of older weights to encourage exploration.
     max_age : int
         Maximum age of weights to consider for utility decay.
-    ucb_threshold : float
-        Threshold for UCB to whether convergence rate should be decreased
     """
 
     def __init__(
@@ -59,7 +57,6 @@ class BOWeightSelector:
         n_warmup: int = 15,
         decay_factor: float = 0.75,
         max_age: int = 2,
-        ucb_threshold: float = 0.1,
     ):
         self.n_obj = n_obj
         self.rng = np.random.default_rng(seed=seed)
@@ -67,7 +64,6 @@ class BOWeightSelector:
         self.n_warmup = n_warmup
         self.decay_factor = decay_factor
         self.max_age = max_age
-        self.ucb_threshold = ucb_threshold
         self.weights_history: list[np.ndarray] = []
         self.utilities_history: list[float] = []
         self.batch_ids: list[int] = []
@@ -206,7 +202,7 @@ class BOWeightSelector:
                 for i, x in enumerate(choices):
                     acq_values[i] = qGIBBON(x.unsqueeze(0)).item()
 
-            self._plot_selection(weights_open, acq_values, selected)
+            self._plot_selection(valid_candidates, acq_values, selected)
 
             return selected, remaining
 
@@ -341,25 +337,6 @@ class BOWeightSelector:
             for idx in contributing_indices:
                 if idx < len(self.utilities_history):
                     self.utilities_history[idx] += share
-
-    def get_two_last_batches_utilities(self) -> float:
-        """Get the total utility gained by the last two batches."""
-        if not self.batch_ids:
-            return 0.0
-
-        # We just need to sum utilities for the current_batch_id (and the one previous)
-        current_id = self.current_batch_id
-        previous_id = current_id - 1
-        total_utility = 0.0
-
-        for i, bid in enumerate(self.batch_ids):
-            if bid in {current_id, previous_id}:
-                total_utility += self.utilities_history[i]
-            elif bid < current_id:
-                # Since list is ordered, we can stop once we see an older batch
-                break
-
-        return total_utility
 
     def get_max_ucb(self, weights_open: np.ndarray) -> float:
         """
