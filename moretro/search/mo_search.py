@@ -90,7 +90,6 @@ class MOSearch:
         self.stop_on_full_pareto = stop_on_full_pareto
         self.exclude_dominated_nodes = exclude_dominated_nodes
         self.weights_open: list[bool] = [True] * self.search_graph.no_weights
-        self.convergence_rate = 1.0
         self.retro_expansion_count = 0
 
     def can_expand_retro(self, node: Nodes) -> bool:

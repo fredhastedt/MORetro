@@ -221,7 +221,6 @@ class MolNode:
         children: list[RxnNode],
         weights: np.ndarray,
         child_new_success: bool,
-        bounded_cost: np.ndarray,
     ) -> tuple[bool, bool]:
         """
         Propagate costs upward from reaction children (OR logic).
@@ -257,7 +256,12 @@ class MolNode:
             )  # should have shape of objectives
         elif self.is_open:  # tip node of tree which is not a building block
             new_rxn_no = self.objectives_to_scalar(weights)
-            best_rxn_no = np.zeros_like(bounded_cost)  # TODO check if correct
+            if self.zero_bound:
+                best_rxn_no = np.zeros(
+                    self.pareto_objectives
+                )  # * Enhancement: add epsilon constraint
+            else:
+                best_rxn_no = np.array(self.value_estimates)[: self.pareto_objectives]
         elif len(children) > 0:  # interior node with children
             children_rxn_no = np.array(
                 [child.rxn_no for child in children]

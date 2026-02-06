@@ -90,8 +90,6 @@ class MOGraph:
         self.pareto_front: ParetoCost = {}
         self.pareto_front_costs: np.ndarray = np.empty((0, pareto_objectives))
         self.mol_to_node: dict[str, MolNode] = {}
-        self.running_cost_threshold = np.zeros(pareto_objectives)
-        self.running_cost_history: list[np.ndarray] = []
 
         # Assignment check:
         if self.pareto_objectives > len(self.heuristic_fns):
@@ -136,12 +134,13 @@ class MOGraph:
             initial_weights_open = self.weight_initialization(
                 n_obj=len(heuristic_fns), init_type="grid", include_extreme=False
             )
-            sobol_weights_open = self.weight_initialization(
+            bo_weights_open = self.weight_initialization(
                 n_obj=len(heuristic_fns),
-                init_type="sobol",
-                include_extreme=False,
+                init_type=self.weight_initial,
+                include_extreme=include_extreme,
+                second_sample=True,  # flag to generate different samples for BO
             )
-            self.weights_open = np.vstack([initial_weights_open, sobol_weights_open])
+            self.weights_open = np.vstack([initial_weights_open, bo_weights_open])
         else:
             self.weights_open = self.weight_initialization(
                 n_obj=len(heuristic_fns),
@@ -205,7 +204,6 @@ class MOGraph:
                 costs = np.array(
                     pred["costs"]
                 )  # * Costs should be calculated outside this class using ML surrogates
-                self.running_cost_history.append(costs[: self.pareto_objectives])
                 rxn_node = RxnNode(
                     smiles=rxn_smiles,
                     template=template,  # In SMARTS
@@ -258,14 +256,6 @@ class MOGraph:
                     self.graph.add_edge(rxn_node, reactant_node)
 
                 new_nodes.append((rxn_node, weight_indices))
-
-        running_cost_mean = np.mean(self.running_cost_history, axis=0)
-        running_cost_std = np.std(self.running_cost_history, axis=0)
-        # get threshold where cost is within bottom 2.5% confidence interval
-        self.running_cost_threshold = np.maximum(
-            running_cost_mean - 1.96 * running_cost_std,
-            np.zeros_like(running_cost_mean),
-        )
         return set(new_nodes)
 
     def update_values(self, nodes: MolsAndWeights) -> bool:
@@ -363,7 +353,6 @@ class MOGraph:
                         children,
                         self.weights,
                         child_new_success,
-                        self.running_cost_threshold,
                     )
                 else:
                     raise TypeError(
@@ -593,7 +582,11 @@ class MOGraph:
             self.bo_selector.add_batch(self.weights)
 
     def weight_initialization(
-        self, n_obj: int, init_type: str, include_extreme: bool
+        self,
+        n_obj: int,
+        init_type: str,
+        include_extreme: bool,
+        second_sample: bool = False,
     ) -> np.ndarray:
         """
         Initialize set of weights for linear combination of objectives.
@@ -606,6 +599,8 @@ class MOGraph:
             Type of weight initialization to use. Options are "sobol" or "dirichlet".
         include_extreme : bool
             Whether to include extreme points in the weight vectors.
+        second_sample: bool
+            Whether this is a second sample for BO (used to generate different samples).
 
         Returns
         -------
@@ -619,7 +614,7 @@ class MOGraph:
         elif init_type == "dirichlet":
             return self.rng.dirichlet(np.ones(n_obj), size=self.weight_samples)
         elif init_type == "grid":
-            return self._grid_initialization()
+            return self._grid_initialization(second_sample)
         elif init_type == "constant":
             return self._constant_initialization()
         else:
@@ -663,15 +658,14 @@ class MOGraph:
             raise ValueError("Please re-adjust the number of samples")
 
         sobol = qmc.Sobol(d=n_obj, scramble=True, rng=self.rng)
+        logger.info(
+            "Sobol Sobol sequence (scramble=True) introduces randomness which may affect reproducibility."
+        )
         m = int(np.log2(sobol_samples_needed))
         raw_samples = sobol.random_base2(m=m)
-        # Transform to exponential distribution to get uniform coverage on simplex
-        exp_samples = -np.log(1.0 - raw_samples)
-
-        # Avoid zero sum (extremely unlikely with scrambled Sobol, but safe to handle)
-        exp_samples[exp_samples < 1e-9] = 1e-9
-
-        sobol_weights = exp_samples / exp_samples.sum(axis=1, keepdims=True)
+        sobol_weights = raw_samples / raw_samples.sum(
+            axis=1, keepdims=True
+        )  # Normalize to sum to 1
 
         # Create final weights array
         if include_extreme:
@@ -685,7 +679,7 @@ class MOGraph:
             logger.info(f"Generated {sobol_samples_needed} Sobol samples.")
         return weights
 
-    def _grid_initialization(self) -> np.ndarray:
+    def _grid_initialization(self, second_sample: bool) -> np.ndarray:
         """
         Generate grid-based weight vectors.
 
@@ -693,10 +687,14 @@ class MOGraph:
         -------
         np.ndarray
             Grid-based weight vectors.
+        second_sample: bool
+            Whether this is a second sample for BO (used to generate different samples with finer grid).
         """
-        if len(self.heuristic_fns) <= 3:
+        if len(self.heuristic_fns) <= 3 or (self.bo_selector and not second_sample):
             # Generate grid points with a step size of 0.25 (0, 0.25, 0.5, 0.75, 1) that sum to 1
             steps = [0.0, 0.25, 0.5, 0.75, 1.0]
+        elif second_sample:
+            steps = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
         else:
             # Coarser steps for higher dim
             steps = [0.0, 1 / 3, 2 / 3, 1.0]
@@ -705,6 +703,9 @@ class MOGraph:
         ).T.reshape(-1, len(self.heuristic_fns))
         # Filter points that sum to 1
         grid_weights = grid_points[np.isclose(grid_points.sum(axis=1), 1.0)]
+        # * Enhancement: this is the point to improve - what should initial samples be?
+        if self.bo_selector and not second_sample:
+            grid_weights = grid_weights[grid_weights[:, -1] >= 0.5]
         # spawn dummy weights s.t. len(weights) % no_weights == 0
         random_weights = self.rng.dirichlet(np.ones(len(self.heuristic_fns)), size=20)
         i = 0
