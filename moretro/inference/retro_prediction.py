@@ -42,6 +42,9 @@ class OneStepModel:
         elif self.model_type == "g2e":
             self.checkpoint_path = MODELS_DIR / "g2e/graph2edits.pth"
             self.template_path = None
+        else:
+            raise ValueError(f"Unsupported model type: {model_type}")
+            # * Add new models here
 
         self.condition_model = ConditionModel(gin.REQUIRED)  # type: ignore
         self.device = device

@@ -242,7 +242,8 @@ class MOSearch:
         Returns
         -------
         int
-            1 to reset weight iteration counter, 0 for no action, -100 to exit search.
+            Updated weight iteration count (reset to 1 if new weights are sampled, incremented otherwise)
+            -100 if iteration budget is reached and search should terminate.
         """
         if num_iter == self.weight_iter_budget + 1 or early_resampling:
             logger.info("Sampling new weights...")

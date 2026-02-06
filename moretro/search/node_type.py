@@ -233,8 +233,6 @@ class MolNode:
             Weight matrix for scalarization.
         child_new_success : bool
             Whether any child has new success.
-        bounded_cost : np.ndarray
-            Bounded cost for open nodes. (Average running cost of reactions)
         Returns
         -------
         tuple[bool, bool]

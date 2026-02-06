@@ -2,7 +2,6 @@
 
 import logging
 import torch
-import numpy as np
 import torch.nn as nn
 from abc import abstractmethod
 from typing import Any
@@ -59,7 +58,7 @@ class TemplateModel(nn.Module):
         pass
 
     def _smis_to_fp(
-        self, smiles: str | list[str], fp_size: int = 2048, device="str"
+        self, smiles: str | list[str], fp_size: int = 2048, device: str = "cpu"
     ) -> torch.Tensor:
         """
         Convert a list of SMILES string to a fingerprint tensor.
@@ -349,7 +348,6 @@ class PDVN(TemplateModel):
                     RDKIT: 2020.09.1
                     BOOST: 1_73
                     """
-                    pass
                 except (IndexError, KeyError) as e:
                     """
                     rdchiral bug during function call rdchiralRunText(rule, mol)
@@ -358,7 +356,6 @@ class PDVN(TemplateModel):
                     rule = '([#8:1]-[C:2](=[O;D1;H0:3])-[CH;D2;+0:4]=[O;H0;D1;+0:5])>>[#8:1]-[C:2](=[O;D1;H0:3])-[C@@H;D3;+0:4](-[OH;D1;+0:5])-[C@H;D3;+0:4](-[OH;D1;+0:5])-[C:2](-[#8:1])=[O;D1;H0:3]'
                     out1 = rdchiralRunText(rule, mol)
                     """
-                    pass
 
             if len(reactants) == 0:
                 all_predictions.append([])
@@ -448,7 +445,6 @@ class RolloutPolicyNet(nn.Module):
             return loss_fn(x, y)
         else:
             return x
-        return x
 
 
 if __name__ == "__main__":

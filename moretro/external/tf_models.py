@@ -1,17 +1,16 @@
-import copy
 import joblib
 import json
 import torch
-import torch.nn as nn
-import sys
 from pathlib import Path
 from rdkit import Chem
 import Graph2Edits.utils
 
 from Graph2Edits.models.graph2edits import Graph2Edits
 from Graph2Edits.models.beam_search import BeamSearch
+
 # from Graph2Edits.models.value_fn import DMPNNValue
-from Graph2Edits.utils.rxn_graphs import  Vocab
+from Graph2Edits.utils.rxn_graphs import Vocab
+
 
 class BaseAgent(object):
     def __init__(self, device: str):
@@ -34,15 +33,21 @@ class BaseAgent(object):
 
 class Graph2EditsPolicy(BaseAgent):
     def __init__(self, model_checkpoint: Path, vocab_checkpoint: Path, device: str):
+        super().__init__(device=device)
         self.device = device
         self.updates = 0
 
-        # self.rxn_mapper = RXNMapper()
         self.bond_vocab = Vocab(joblib.load(vocab_checkpoint / "bond_vocab.txt"))
         self.atom_vocab = Vocab(joblib.load(vocab_checkpoint / "atom_lg_vocab.txt"))
-        config = json.load(open(model_checkpoint.parent / "config.json", "r"))
-        
-        self.graph2edits = Graph2Edits(config, atom_vocab = self.atom_vocab, bond_vocab = self.bond_vocab, device=device)
+        with open(model_checkpoint.parent / "config.json", "r") as f:
+            config = json.load(f)
+
+        self.graph2edits = Graph2Edits(
+            config,
+            atom_vocab=self.atom_vocab,
+            bond_vocab=self.bond_vocab,
+            device=device,
+        )
 
         # Load bream search
         self.beam_model = BeamSearch(
@@ -60,9 +65,11 @@ class Graph2EditsPolicy(BaseAgent):
         # self.value_fn.eval()
         # self.value_optim = torch.optim.Adam(self.value_fn.parameters(), lr=args.lr)
 
-        self.nn_models = {"policy": self.graph2edits}# , "value_fn": self.value_fn}
+        self.nn_models = {"policy": self.graph2edits}  # , "value_fn": self.value_fn}
 
-    def predict(self, products: str | list[str], topk: int = 5, templates = None) -> list[list[dict]]:
+    def predict(
+        self, products: str | list[str], topk: int = 5, templates=None
+    ) -> list[list[dict]]:
         if isinstance(products, str):
             products = [products]
         self.beam_model.beam_size = topk
@@ -84,23 +91,26 @@ class Graph2EditsPolicy(BaseAgent):
                     for action, atom_or_atoms in zip(res["edits"], res["edits_atom"]):
                         edit_seq_with_params.append((action, atom_or_atoms))
                     edit_seq_with_params.append(("Terminate", None))
-                    final_smiles = res['final_smi']
+                    final_smiles = res["final_smi"]
                     final_mol = Chem.MolFromSmiles(final_smiles)
                     [a.SetAtomMapNum(0) for a in final_mol.GetAtoms()]
                     final_smiles = Chem.MolToSmiles(final_mol)
-                    product_preds.append({
-                        "rxn_smiles": f"{final_smiles}>>{p_smi}",
-                        "score": res['prob'], 
-                        "template": edit_seq_with_params,
-                        "reactants": final_smiles.split('.')
-                    })
+                    product_preds.append(
+                        {
+                            "rxn_smiles": f"{final_smiles}>>{p_smi}",
+                            "score": res["prob"],
+                            "template": edit_seq_with_params,
+                            "reactants": final_smiles.split("."),
+                        }
+                    )
             all_predictions.append(product_preds[:topk])
-        
+
         return all_predictions
-    
+
+
 if __name__ == "__main__":
     g2p_checkpoint = Path(__file__).parent.parent / "models/graph2edits.pth"
-    g2e_checkpoint = Path(__file__).parent / "Graph2Edits/checkpoint" 
+    g2e_checkpoint = Path(__file__).parent / "Graph2Edits/checkpoint"
     vocab_checkpoint = Path(__file__).parent / "Graph2Edits/vocab"
     model = Graph2EditsPolicy(g2e_checkpoint, vocab_checkpoint, device="cpu")
     model.load_state_dict(torch.load(g2p_checkpoint, map_location="cpu"))

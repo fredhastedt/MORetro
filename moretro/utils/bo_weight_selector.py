@@ -197,12 +197,13 @@ class BOWeightSelector:
 
             # --- Visualization ---
             # Compute acquisition function values for visualization
-            with torch.no_grad():
-                acq_values = np.zeros(len(choices))
-                for i, x in enumerate(choices):
-                    acq_values[i] = qGIBBON(x.unsqueeze(0)).item()
+            if self.n_obj == 3 and PLOTTING_AVAILABLE:
+                with torch.no_grad():
+                    acq_values = np.zeros(len(choices))
+                    for i, x in enumerate(choices):
+                        acq_values[i] = qGIBBON(x.unsqueeze(0)).item()
 
-            self._plot_selection(valid_candidates, acq_values, selected)
+                self._plot_selection(valid_candidates, acq_values, selected)
 
             return selected, remaining
 
