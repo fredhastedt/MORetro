@@ -58,7 +58,9 @@ class TemplateModel(nn.Module):
     def _run_templates(self):
         pass
 
-    def _smis_to_fp(self, smiles: str | list[str], fp_size: int = 2048) -> torch.Tensor:
+    def _smis_to_fp(
+        self, smiles: str | list[str], fp_size: int = 2048, device="str"
+    ) -> torch.Tensor:
         """
         Convert a list of SMILES string to a fingerprint tensor.
         """
@@ -71,7 +73,7 @@ class TemplateModel(nn.Module):
             fp = GetMorganFingerprintAsBitVect(
                 mol, radius=2, nBits=fp_size, useChirality=True
             )
-            fp = torch.tensor(fp, dtype=torch.float)
+            fp = torch.tensor(fp, dtype=torch.float, device=device)
             fps.append(fp)
 
         if len(fps) == 1:
@@ -124,7 +126,7 @@ class TemplRel(TemplateModel):
         else:
             single_input = False
 
-        target_fp = self._smis_to_fp(products)
+        target_fp = self._smis_to_fp(products, device=next(self.parameters()).device)
 
         # Get fingerprints and rdchiral reactants for each product
         target_rds = []
@@ -138,7 +140,7 @@ class TemplRel(TemplateModel):
 
         # Process all products with the same logic
         all_predictions = []
-        probs = torch.softmax(output, dim=1 if len(products) > 1 else 0)
+        probs = torch.softmax(output, dim=1 if len(products) > 1 else 0).cpu()
 
         # Handle dimension for single vs multiple products
         if single_input:
@@ -239,7 +241,7 @@ class PDVN(TemplateModel):
         self,
         trained_model: Path,
         template_path: Path,
-        device: int = -1,
+        device: str = "cuda",
         fp_dim: int = 2048,
         realistic_filter: bool = False,
     ):
@@ -248,16 +250,18 @@ class PDVN(TemplateModel):
         self.net, self.idx2rules = self.load_model(trained_model, template_path, fp_dim)
         self.net.eval()
         self.device = device
-        if device >= 0:
+        if device == "cuda":
             self.net.to(device)
 
         self.realistic_filter = realistic_filter
 
         self.reference_net, _ = self.load_model(
-            template_path.parent / "saved_rollout_state_1_2048.ckpt", template_path, fp_dim
+            template_path.parent / "saved_rollout_state_1_2048.ckpt",
+            template_path,
+            fp_dim,
         )
         self.reference_net.eval()
-        if device >= 0:
+        if device == "cuda":
             self.reference_net.to(device)
 
     def forward(
@@ -276,16 +280,20 @@ class PDVN(TemplateModel):
         return preds, preds_reference, idx_topk
 
     def predict(
-        self, products: str | list[str], topk: int, templates=None, backward: bool = True
+        self,
+        products: str | list[str],
+        topk: int,
+        templates=None,
+        backward: bool = True,
     ) -> list[list[dict[str, Any]]]:
         if isinstance(products, str):
             products = [products]
 
-        arr = self._smis_to_fp(products, self.fp_dim)
+        arr = self._smis_to_fp(products, self.fp_dim, device=self.device)
         if len(products) == 1 and arr.dim() == 1:
             arr = arr.unsqueeze(0)
 
-        if self.device >= 0:
+        if self.device == "cuda":
             arr = arr.to(self.device)
 
         preds, preds_reference, idx = self.forward(arr, topk=topk)

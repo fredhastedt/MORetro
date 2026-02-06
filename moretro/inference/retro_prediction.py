@@ -1,5 +1,5 @@
 import json
-from logging import Logger
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -11,9 +11,10 @@ from moretro.external.quarc.quarc_predictor import QuarcPredictor
 from moretro.external.template_models import PDVN, TemplRel
 from moretro.external.tf_models import Graph2EditsPolicy
 from moretro.inference.calculate_costs import COST_MAPPING, calculate_costs
+from moretro.utils.base_paths import MODELS_DIR
 from moretro.utils.typing_hints import Predictions
 
-logger = Logger(__name__)
+logger = logging.getLogger(__name__)
 file_path = Path(__file__).parent
 
 
@@ -28,14 +29,22 @@ class OneStepModel:
     def __init__(
         self,
         model_type: str,
-        checkpoint_path: str,
         cost_functions: list[str],
-        template_path: str | None = None,
+        device: str,
     ):
         self.model_type = model_type
-        self.checkpoint_path = file_path.parent / checkpoint_path
-        self.template_path = file_path.parent / template_path if template_path else None
+        if self.model_type == "template":
+            self.checkpoint_path = MODELS_DIR / "template/model_retro.pt"
+            self.template_path = MODELS_DIR / "template/idx2template_retro.json"
+        elif self.model_type == "pdvn":
+            self.checkpoint_path = MODELS_DIR / "pdvn/rollout_model.ckpt"
+            self.template_path = MODELS_DIR / "pdvn/template_rules_1.dat"
+        elif self.model_type == "g2e":
+            self.checkpoint_path = MODELS_DIR / "g2e/graph2edits.pth"
+            self.template_path = None
+
         self.condition_model = ConditionModel(gin.REQUIRED)  # type: ignore
+        self.device = device
         logger.info(f"Loading Single-Step Model from {self.checkpoint_path}")
 
         self.cost_functions = []
@@ -51,7 +60,7 @@ class OneStepModel:
         else:
             logger.info("No template path provided, expected for non-template models.")
 
-        if model_type == "st" and self.template_path:
+        if model_type == "template" and self.template_path:
             with open(self.template_path, encoding="utf-8") as f:
                 template_dict = json.load(f)
             self.templates = {}
@@ -62,6 +71,7 @@ class OneStepModel:
             )
             pretrain_args = retro_checkpoint["args"]
             self.model = TemplRel(pretrain_args)
+            self.model.to(self.device)
             state_dict = retro_checkpoint["state_dict"]
             state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
             self.model.load_state_dict(state_dict)
@@ -69,7 +79,7 @@ class OneStepModel:
             self.model = PDVN(
                 trained_model=self.checkpoint_path,
                 template_path=self.template_path,
-                device=-1,
+                device=self.device,
                 fp_dim=2048,
                 realistic_filter=True,
             )
@@ -78,7 +88,7 @@ class OneStepModel:
             self.model = Graph2EditsPolicy(
                 model_checkpoint=self.checkpoint_path,
                 vocab_checkpoint=self.checkpoint_path.parent / "vocab",
-                device="cuda",
+                device=self.device,
             )
             self.model.load_state_dict(
                 torch.load(self.checkpoint_path, map_location="cpu")
@@ -187,7 +197,6 @@ class ConditionModel:
                 config_path=self.config_path, device=self.device
             )
         elif self.model_type == "rct":
-            # TODO implement this
             raise NotImplementedError("R-CT model not implemented yet.")
         else:
             raise ValueError(f"Unsupported condition model type: {self.model_type}")

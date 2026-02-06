@@ -30,7 +30,7 @@ class LogPPredictor:
     A class for loading ChemProp v2 models and making LogP predictions.
     """
 
-    def __init__(self, checkpoint_path: Union[str, Path]):
+    def __init__(self, checkpoint_path: Union[str, Path], device: str = "cuda"):
         """
         Initialize the LogP predictor with a model checkpoint.
 
@@ -44,7 +44,7 @@ class LogPPredictor:
         self.featurizer = featurizers.SimpleMoleculeMolGraphFeaturizer(
             atom_featurizer=atom_featurizer
         )
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device
 
         self._load_model()
 
@@ -56,11 +56,7 @@ class LogPPredictor:
             )
 
         try:
-            # Load the model checkpoint
-            checkpoint = torch.load(self.checkpoint_path, map_location=self.device)
-
-            # Initialize model from checkpoint
-            self.model = MPNN.load_from_checkpoint(self.checkpoint_path)
+            self.model = MPNN.load_from_checkpoint(self.checkpoint_path, map_location=self.device)
             self.model.to(self.device)
             self.model.eval()
 
@@ -111,8 +107,8 @@ class LogPPredictor:
                     enable_progress_bar=False,
                     enable_model_summary=False,
                     enable_checkpointing=False,
-                    accelerator="gpu" if torch.cuda.is_available() else "cpu",
-                    devices=1,
+                    accelerator=self.device,
+                    devices="auto",
                 )
 
                 # Make predictions
