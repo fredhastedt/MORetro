@@ -135,9 +135,8 @@ class TestMolNode:
     def test_uppropagate_known_molecule(self, known_mol_node):
         """Test uppropagation for known building block"""
         weights = np.array([[0.6, 0.4], [0.3, 0.7]])
-        bounded_cost = np.zeros(2)
 
-        result = known_mol_node.uppropagate([], weights, False, bounded_cost)
+        result = known_mol_node.uppropagate([], weights, False)
 
         assert result  # Should return True for changes
         assert known_mol_node.success
@@ -154,9 +153,8 @@ class TestMolNode:
     def test_uppropagate_open_node(self, simple_mol_node):
         """Test uppropagation for open (leaf) node"""
         weights = np.array([[0.5, 0.5]])
-        bounded_cost = np.zeros(1)
 
-        result = simple_mol_node.uppropagate([], weights, False, bounded_cost)
+        result = simple_mol_node.uppropagate([], weights, False)
 
         assert result
         assert (
@@ -183,9 +181,8 @@ class TestMolNode:
 
         simple_mol_node.is_open = False
         weights = np.array([[1.0, 0.0], [0.0, 1.0]])
-        bounded_cost = np.zeros(2)
 
-        result = simple_mol_node.uppropagate([child1, child2], weights, False, bounded_cost)
+        result = simple_mol_node.uppropagate([child1, child2], weights, False)
 
         assert result
         assert simple_mol_node.success  # At least one child is successful
@@ -818,10 +815,9 @@ class TestIntegration:
             max_dominated_solutions=5,
         )
         weights = np.array([[1.0, 0.0], [0.0, 1.0]])
-        bounded_cost = np.zeros(2)
 
         # Simulate uppropagation from building block
-        bb_updated = bb_node.uppropagate([], weights, False, bounded_cost)
+        bb_updated = bb_node.uppropagate([], weights, False)
         assert all(bb_updated)
         assert bb_node.success
 
@@ -834,7 +830,7 @@ class TestIntegration:
         target_node.is_open = False
 
         # Propagate to target
-        target_updated = target_node.uppropagate([rxn_node], weights, True, bounded_cost)
+        target_updated = target_node.uppropagate([rxn_node], weights, True)
         assert all(target_updated)
         assert target_node.success
 
@@ -872,9 +868,8 @@ class TestEdgeCases:
         node.success = False
 
         weights = np.array([[0.5, 0.5]])  # Will produce same rxn_no = [1.5]
-        bounded_cost = np.zeros(1)
 
-        result = node.uppropagate([], weights, False, bounded_cost)
+        result = node.uppropagate([], weights, False)
         assert not all(result)  # No changes should occur
 
     def test_rxn_node_duplicate_uppropagate_calls(self):

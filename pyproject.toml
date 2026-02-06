@@ -33,7 +33,7 @@ dependencies = [
     "requests>=2.25.0",
     "networkx>=2.5",
     "chemprop==2.0.0",
-    "botorch==0.16.1",
+    "botorch>=0.16.1,<0.17.0",
 ]
 
 [project.optional-dependencies]
@@ -80,7 +80,7 @@ select = [
 fixable = ["E", "F", "W", "I", "UP"]
 ignore = [
     "E501", "E203", "PLR0913", "PLR0915", "PLR0917",
-    "PLR0914", "PLR6301", "PLR2004", "N806", "PLR0912"
+    "PLR0914", "PLR6301", "PLR2004", "N806", "PLR0912", "PLW0603"
 ]
 
 [tool.ruff.lint.mccabe]
