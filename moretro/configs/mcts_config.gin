@@ -1,0 +1,57 @@
+import moretro.mcts_star
+
+# Macros IMPORTANT
+device = "cuda" # used for ML models
+single_step_model = "template" # ["template", "pdvn", "g2e"]
+single_step_topk = 25
+building_blocks = "models/origin_dict.csv"
+
+# Macros Objectives
+objective_functions = ["sustainability_cost", "scaleup_cost", "toxicity_cost", "policy_cost"]
+
+# Macros MCTS
+mcts_iteration_budget = 300      # total MCTS iterations
+mcts_max_depth = 20              # max retrosynthetic steps per route
+mcts_max_solutions = 250         # stop once this many solutions are found
+mcts_time_budget = 0             # wall-clock budget in seconds (0 = no limit)
+mcts_C = 1.4                     # UCT exploration constant
+mcts_use_prior = True            # seed child values with model reaction confidence
+rollout_step_limit = 15              # max steps per rollout simulation
+model_call_budget = 300
+solved_fraction_bonus = 1.0      # bonus weight on solved fraction at rollout leaf
+solved_terminal_bonus = 0.0      # extra bonus when rollout leaf is fully solved
+backup_gamma = 1.0               # AiZ-style terminal-value propagation (no damping)
+reward_k = 1.0                   # Eq. (3) coefficient for xi(b) = length(b) - sum(k * P)
+
+# ------------------------- CONFIGURATION OF CLASSES (do not touch) -------------------------
+# Preparation methods
+prepare_starting_mols.file_path = %building_blocks
+prepare_cost_models.cost_functions = %objective_functions
+prepare_cost_models.device = %device
+
+# Retro model
+retro_prediction.OneStepModel.model_type = %single_step_model
+retro_prediction.OneStepModel.cost_functions = %objective_functions
+retro_prediction.OneStepModel.device = %device
+
+# Condition model
+retro_prediction.ConditionModel.model_type = "quarc"
+retro_prediction.ConditionModel.config_path = "external/quarc/configs"
+retro_prediction.ConditionModel.device = %device
+retro_prediction.ConditionModel.top_k = 1
+retro_prediction.ConditionModel.beam_size = 5
+
+# MCTS Search Parameters
+MCTSSearch.top_n = %single_step_topk
+MCTSSearch.max_depth = %mcts_max_depth
+MCTSSearch.iteration_budget = %mcts_iteration_budget
+MCTSSearch.max_solutions = %mcts_max_solutions
+MCTSSearch.time_budget = %mcts_time_budget
+MCTSSearch.C = %mcts_C
+MCTSSearch.use_prior = %mcts_use_prior
+MCTSSearch.rollout_step_limit = %rollout_step_limit
+MCTSSearch.model_call_budget = %model_call_budget
+MCTSSearch.solved_fraction_bonus = %solved_fraction_bonus
+MCTSSearch.solved_terminal_bonus = %solved_terminal_bonus
+MCTSSearch.backup_gamma = %backup_gamma
+MCTSSearch.reward_k = %reward_k
